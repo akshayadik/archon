@@ -28,7 +28,7 @@ export interface ReviewResponse {
 }
 
 const apiClient = axios.create({
-  baseURL: 'http://localhost:8000/api', // Your FastAPI backend
+  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api',
   headers: {
     'Content-Type': 'application/json',
   },
