@@ -3,14 +3,18 @@
 
 import React, { useState } from 'react';
 import { Key, Loader2, Link as LinkIcon, AlertCircle} from 'lucide-react';
-import { analyzePullRequest, ReviewResponse, ReviewParams } from '../lib/api';
+// IMPORT the new AnalyzedFile interface
+import { analyzePullRequest, ReviewResponse, ReviewParams, ReviewIssue, AnalyzedFile } from '../lib/api';
 
 interface InputFormProps {
+  onStart: () => void;
+  // UPDATE the signature here
+  onProgress: (newIssues: ReviewIssue[], message: string, newFile?: AnalyzedFile) => void;
   onSuccess: (data: ReviewResponse) => void;
+  onError: (message: string) => void;
 }
 
-export default function InputForm({ onSuccess }: InputFormProps) {
-  // Form States
+export default function InputForm({ onStart, onProgress, onSuccess, onError }: InputFormProps) {
   const [url, setUrl] = useState('');
   const [provider, setProvider] = useState<'github' | 'bitbucket'>('github');
   const [repoOwner, setRepoOwner] = useState('');
@@ -18,11 +22,9 @@ export default function InputForm({ onSuccess }: InputFormProps) {
   const [prNumber, setPrNumber] = useState('');
   const [token, setToken] = useState('');
   
-  // UI States
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [localError, setLocalError] = useState<string | null>(null);
 
-  // Smart URL Parser to Auto-Fill the fields
   const handleUrlPaste = (e: React.ChangeEvent<HTMLInputElement>) => {
     const pastedUrl = e.target.value;
     setUrl(pastedUrl);
@@ -31,41 +33,37 @@ export default function InputForm({ onSuccess }: InputFormProps) {
       const urlObj = new URL(pastedUrl);
       const pathParts = urlObj.pathname.split('/').filter(Boolean);
 
-      // GitHub: github.com/owner/repo/pull/123
       if (urlObj.hostname.includes('github') && pathParts.length >= 4 && pathParts[2] === 'pull') {
         setProvider('github');
         setRepoOwner(pathParts[0]);
         setRepoName(pathParts[1]);
         setPrNumber(pathParts[3]);
       }
-      
-      // Bitbucket: bitbucket.org/owner/repo/pull-requests/123
       else if (urlObj.hostname.includes('bitbucket') && pathParts.length >= 4 && pathParts[2] === 'pull-requests') {
         setProvider('bitbucket');
         setRepoOwner(pathParts[0]);
         setRepoName(pathParts[1]);
         setPrNumber(pathParts[3]);
       }
-    } catch {
-      // If it's not a valid URL yet, just do nothing and let them type manually
-    }
+    } catch { }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
+    setLocalError(null);
 
-    // Validate manual inputs
     if (!repoOwner || !repoName || !prNumber) {
-      setError("Please fill out the repository and PR details.");
+      setLocalError("Please fill out the repository and PR details.");
       return;
     }
     if (!token.trim()) {
-      setError("Please provide an access token.");
+      setLocalError("Please provide an access token.");
       return;
     }
 
     setIsLoading(true);
+    // Trigger the UI to shift immediately to the dashboard
+    onStart(); 
 
     try {
       const payload: ReviewParams = { 
@@ -76,11 +74,12 @@ export default function InputForm({ onSuccess }: InputFormProps) {
         token: token.trim() 
       };
       
-      const response = await analyzePullRequest(payload);
+      const response = await analyzePullRequest(payload, onProgress);
       onSuccess(response);
     } catch (err: any) {
       const apiError = err.response?.data?.detail || err.message || "An unexpected error occurred.";
-      setError(`Analysis failed: ${apiError}`);
+      setLocalError(`Analysis failed: ${apiError}`);
+      onError(`Analysis failed: ${apiError}`); // Send error up to Dashboard
     } finally {
       setIsLoading(false);
     }
@@ -89,14 +88,13 @@ export default function InputForm({ onSuccess }: InputFormProps) {
   return (
     <form onSubmit={handleSubmit} className="w-full max-w-2xl mx-auto space-y-6">
       
-      {error && (
+      {localError && (
         <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-md flex items-start space-x-3">
           <AlertCircle className="w-5 h-5 text-red-500 mt-0.5" />
-          <p className="text-red-700 text-sm font-medium">{error}</p>
+          <p className="text-red-700 text-sm font-medium">{localError}</p>
         </div>
       )}
 
-      {/* Magic URL Input */}
       <div>
         <label className="block text-sm font-semibold text-gray-700 mb-2">Smart Paste (Optional)</label>
         <div className="relative">
@@ -115,8 +113,6 @@ export default function InputForm({ onSuccess }: InputFormProps) {
 
       <div className="border-t border-gray-200 pt-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          
-          {/* Provider Selection */}
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-2">Provider</label>
             <select
@@ -128,8 +124,6 @@ export default function InputForm({ onSuccess }: InputFormProps) {
               <option value="bitbucket">Bitbucket</option>
             </select>
           </div>
-
-          {/* PR Number */}
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-2">PR Number</label>
             <input
@@ -142,8 +136,6 @@ export default function InputForm({ onSuccess }: InputFormProps) {
               placeholder="e.g. 42"
             />
           </div>
-
-          {/* Repo Owner */}
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-2">Workspace / Owner</label>
             <input
@@ -155,8 +147,6 @@ export default function InputForm({ onSuccess }: InputFormProps) {
               placeholder="e.g. abcdevelopers"
             />
           </div>
-
-          {/* Repo Name */}
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-2">Repository Name</label>
             <input
@@ -168,11 +158,9 @@ export default function InputForm({ onSuccess }: InputFormProps) {
               placeholder="e.g. hellp-world"
             />
           </div>
-
         </div>
       </div>
 
-      {/* Token Input */}
       <div className="pt-2">
         <label className="block text-sm font-semibold text-gray-700 mb-2">Access Token</label>
         <div className="relative">
@@ -199,7 +187,7 @@ export default function InputForm({ onSuccess }: InputFormProps) {
         {isLoading ? (
           <>
             <Loader2 className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" />
-            Analyzing Architecture...
+            Connecting to Repository...
           </>
         ) : (
           'Review Architecture'
