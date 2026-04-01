@@ -1,8 +1,16 @@
 // frontend/src/lib/api.ts
 
-// frontend/src/lib/api.ts
+// --- INPUT SCHEMA ---
+export interface ReviewParams {
+  provider: 'github' | 'bitbucket';
+  repo_owner: string;
+  repo_name: string;
+  pr_number: number; // or number
+  token: string;
+  target_file?: string; // NEW: Optional target file
+}
 
-// NEW Interface
+// --- OUTPUT SCHEMAS ---
 export interface ComplexityAnalysis {
   current: string;
   improved: string;
@@ -11,19 +19,18 @@ export interface ComplexityAnalysis {
 
 export interface ReviewIssue {
   severity: 'Low' | 'Medium' | 'High' | 'Critical';
-  category: 'Perf' | 'Security' | 'Design' | 'Maintainability' | 'Logic'; // Added Logic
+  category: 'Perf' | 'Security' | 'Design' | 'Maintainability' | 'Logic'; 
   file_path: string;
   line_number?: number;
   title: string;
   explanation: string;
-  impact: string; // NEW
+  impact: string; 
   suggested_fix: string;
   trade_offs: string;
-  complexity_analysis?: ComplexityAnalysis | null; // NEW
+  complexity_analysis?: ComplexityAnalysis | null; 
   code_diff?: string;
 }
 
-// NEW: Track file-level statistics
 export interface AnalyzedFile {
   filename: string;
   issueCount: number;
@@ -31,12 +38,15 @@ export interface AnalyzedFile {
 
 export interface ReviewResponse {
   issues: ReviewIssue[];
-  analyzedFiles?: AnalyzedFile[]; // NEW: Added to response
+  analyzedFiles?: AnalyzedFile[]; 
 }
+
+// --- API FUNCTION ---
+// frontend/src/lib/api.ts
+// ... (Keep your interfaces exactly the same at the top) ...
 
 export const analyzePullRequest = async (
   params: ReviewParams,
-  // NEW: Updated signature to pass the newly analyzed file
   onProgress?: (newIssues: ReviewIssue[], message: string, newFile?: AnalyzedFile) => void 
 ): Promise<ReviewResponse> => {
   const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
@@ -65,47 +75,56 @@ export const analyzePullRequest = async (
     const decoder = new TextDecoder('utf-8');
     let done = false;
     let allIssues: ReviewIssue[] = [];
-    let allAnalyzedFiles: AnalyzedFile[] = []; // Track all files
+    let allAnalyzedFiles: AnalyzedFile[] = [];
+    
+    // NEW: The string buffer to hold fragmented network chunks
+    let buffer = ''; 
 
     while (!done) {
       const { value, done: readerDone } = await reader.read();
       done = readerDone;
 
       if (value) {
-        const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split('\n');
+        buffer += decoder.decode(value, { stream: true });
+        const messages = buffer.split('\n\n');
+        buffer = messages.pop() || '';
 
-        for (const line of lines) {
-          if (line.startsWith('data:')) {
-            const dataStr = line.replace('data:', '').trim();
+        for (const message of messages) {
+          if (message.startsWith('data:')) {
+            const dataStr = message.replace(/^data:\s*/, '').trim();
             if (!dataStr) continue;
 
+            // 1. Parse the JSON safely
+            let data;
             try {
-              const data = JSON.parse(dataStr);
-
-              if (data.status === 'file_completed') {
-                const newIssues = data.issues || [];
-                allIssues = [...allIssues, ...newIssues];
-                
-                // Create a record for this specific file
-                const newFile: AnalyzedFile = {
-                  filename: data.filename,
-                  issueCount: newIssues.length
-                };
-                allAnalyzedFiles.push(newFile);
-
-                // Pass both the issues and the file info to the UI
-                if (onProgress) onProgress(newIssues, `Analyzed ${data.filename}`, newFile);
-              } 
-              else if (data.status === 'progress' || data.status === 'info') {
-                if (onProgress) onProgress([], data.message);
-              }
-              else if (data.status === 'error' || data.status === 'fatal_error') {
-                if (onProgress) onProgress([], `Error: ${data.message}`);
-                if (data.status === 'fatal_error') throw new Error(data.message);
-              }
+              data = JSON.parse(dataStr);
             } catch (e) {
-              // Ignore partial JSON parsing errors
+               console.error("Skipping fragmented network chunk...");
+               continue; // Skip to next message if JSON is incomplete
+            }
+
+            // 2. Handle the data OUTSIDE the catch block!
+            if (data.status === 'file_completed') {
+              const newIssues = data.issues || [];
+              allIssues = [...allIssues, ...newIssues];
+              
+              const newFile: AnalyzedFile = {
+                filename: data.filename,
+                issueCount: newIssues.length
+              };
+              allAnalyzedFiles.push(newFile);
+
+              if (onProgress) onProgress(newIssues, `Analyzed ${data.filename}`, newFile);
+            } 
+            else if (data.status === 'progress' || data.status === 'info') {
+              if (onProgress) onProgress([], data.message);
+            }
+            else if (data.status === 'error') {
+              if (onProgress) onProgress([], `Error: ${data.message}`);
+            }
+            // CRITICAL FIX: Properly throw fatal errors so the UI catches them!
+            else if (data.status === 'fatal_error') {
+              throw new Error(data.message);
             }
           }
         }

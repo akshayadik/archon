@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState } from 'react';
-import { Key, Loader2, Link as LinkIcon, AlertCircle} from 'lucide-react';
+import { Key, Loader2, Link as LinkIcon, AlertCircle, FileSearch} from 'lucide-react';
 // IMPORT the new AnalyzedFile interface
 import { analyzePullRequest, ReviewResponse, ReviewParams, ReviewIssue, AnalyzedFile } from '../lib/api';
 
@@ -21,6 +21,7 @@ export default function InputForm({ onStart, onProgress, onSuccess, onError }: I
   const [repoName, setRepoName] = useState('');
   const [prNumber, setPrNumber] = useState('');
   const [token, setToken] = useState('');
+  const [targetFile, setTargetFile] = useState(''); // NEW: State for specific file
   
   const [isLoading, setIsLoading] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
@@ -62,7 +63,6 @@ export default function InputForm({ onStart, onProgress, onSuccess, onError }: I
     }
 
     setIsLoading(true);
-    // Trigger the UI to shift immediately to the dashboard
     onStart(); 
 
     try {
@@ -71,7 +71,9 @@ export default function InputForm({ onStart, onProgress, onSuccess, onError }: I
         repo_owner: repoOwner.trim(),
         repo_name: repoName.trim(),
         pr_number: parseInt(prNumber, 10),
-        token: token.trim() 
+        token: token.trim(),
+        // NEW: Include target file if the user typed something
+        target_file: targetFile.trim() ? targetFile.trim() : undefined 
       };
       
       const response = await analyzePullRequest(payload, onProgress);
@@ -79,7 +81,7 @@ export default function InputForm({ onStart, onProgress, onSuccess, onError }: I
     } catch (err: any) {
       const apiError = err.response?.data?.detail || err.message || "An unexpected error occurred.";
       setLocalError(`Analysis failed: ${apiError}`);
-      onError(`Analysis failed: ${apiError}`); // Send error up to Dashboard
+      onError(`Analysis failed: ${apiError}`); 
     } finally {
       setIsLoading(false);
     }
@@ -176,6 +178,24 @@ export default function InputForm({ onStart, onProgress, onSuccess, onError }: I
             placeholder="Bearer token or username:app_password"
           />
         </div>
+      </div>
+
+      {/* NEW: Specific File Filter Field */}
+      <div className="pt-2">
+        <label className="block text-sm font-semibold text-gray-700 mb-2">Specific File to Review (Optional)</label>
+        <div className="relative">
+          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+            <FileSearch className="h-5 w-5 text-gray-400" />
+          </div>
+          <input
+            type="text"
+            value={targetFile}
+            onChange={(e) => setTargetFile(e.target.value)}
+            className="block w-full pl-10 pr-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 placeholder-gray-400 bg-white"
+            placeholder="e.g. ErrorCode.java or src/main/..."
+          />
+        </div>
+        <p className="mt-1.5 text-xs text-gray-500">Leave blank to review all eligible files in the PR.</p>
       </div>
 
       <button

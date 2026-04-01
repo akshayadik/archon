@@ -8,6 +8,7 @@ class ReviewRequest(BaseModel):
     repo_name: str
     pr_number: int
     token: str
+    target_file: Optional[str] = Field(default=None, description="Optional specific file to review") # NEW
 
 # NEW: Create a nested model for the complexity analysis
 class ComplexityAnalysis(BaseModel):

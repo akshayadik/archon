@@ -63,7 +63,7 @@ def analyze_single_file_with_ai(repo_tree: str, file_data: dict) -> str:
     ### STRICT REVIEW RULES
     - IGNORE: formatting, indentation, naming conventions, stylistic preferences
     - DO NOT invent issues — only report real, evidence-based problems
-    - DO NOT limit analysis to changed lines — use full context
+    - If FULL FILE CONTENT is provided, use it to find broader architectural flaws. If it says "OMITTED", rely STRICTLY on the PULL REQUEST DIFF to find flaws in the new logic.
     - PRIORITIZE high-impact issues over trivial ones
     - Each issue must be actionable and technically precise
 
@@ -116,7 +116,6 @@ def analyze_single_file_with_ai(repo_tree: str, file_data: dict) -> str:
 
     Now analyze the provided file.
     """
-
     # Keep our Exponential Backoff for Groq's rate limits
     max_retries = 3
     for attempt in range(max_retries):
@@ -141,12 +140,14 @@ def analyze_single_file_with_ai(repo_tree: str, file_data: dict) -> str:
             
         except Exception as e:
             error_str = str(e).lower()
-            # Catch Rate Limits (429) or Server Overload (503)
-            if "429" in error_str or "too many requests" in error_str or "503" in error_str:
+            
+            # UPDATED: Catch Rate Limits, Server Overloads, AND Network Connection Drops
+            network_errors = ["429", "too many requests", "503", "connection reset", "connection aborted", "timeout", "104", "peer"]
+            
+            if any(err in error_str for err in network_errors):
                 if attempt < max_retries - 1:
-                    # Wait 4 seconds, then 8 seconds, then give up
                     sleep_time = (2 ** attempt) * 4 
-                    print(f"⚠️ Groq rate limited on {filename}. Retrying in {sleep_time}s...")
+                    print(f"⚠️ Network/Rate limit hiccup on {filename} ({error_str}). Retrying in {sleep_time}s...")
                     time.sleep(sleep_time)
                     continue
             
