@@ -95,7 +95,6 @@ This tool is **Stateless**.
 ---
 
 ## 🛠️ Operational Commands
-
 ### **Backend (FastAPI)**
 | Action | Command |
 | :--- | :--- |

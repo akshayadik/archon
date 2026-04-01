@@ -1,22 +1,25 @@
 // frontend/src/lib/api.ts
 
-export interface ReviewParams {
-  provider: 'github' | 'bitbucket';
-  repo_owner: string;
-  repo_name: string;
-  pr_number: number;
-  token: string;
+// frontend/src/lib/api.ts
+
+// NEW Interface
+export interface ComplexityAnalysis {
+  current: string;
+  improved: string;
+  notes: string;
 }
 
 export interface ReviewIssue {
   severity: 'Low' | 'Medium' | 'High' | 'Critical';
-  category: 'Perf' | 'Security' | 'Design' | 'Maintainability';
+  category: 'Perf' | 'Security' | 'Design' | 'Maintainability' | 'Logic'; // Added Logic
   file_path: string;
   line_number?: number;
   title: string;
   explanation: string;
+  impact: string; // NEW
   suggested_fix: string;
   trade_offs: string;
+  complexity_analysis?: ComplexityAnalysis | null; // NEW
   code_diff?: string;
 }
 
